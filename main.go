@@ -30,7 +30,7 @@ type Emulator struct {
 }
 
 func main() {
-    emu := create_emu(MEMORY_SIZE, 0x0000, 0x7c00)
+    emu := create_emu(MEMORY_SIZE, 0x7c00, 0x7c00)
 
     if len(os.Args) != 2 {
         fmt.Println("usage: x86_emu filename\n")
@@ -44,14 +44,14 @@ func main() {
         os.Exit(1)
     }
 
-    copy(emu.memory[:], buf)
+    copy(emu.memory[0x7c00:], buf)
 
     for emu.eip < MEMORY_SIZE {
         code := uint8(emu.get_code8(0))
         fmt.Printf("EIP = %X, Code = %X\n", emu.eip, code)
         emu.call_instruction(code)
 
-        if emu.eip == 0x00 {
+        if emu.eip == 0 {
             fmt.Println("End of program")
             break
         }
@@ -85,6 +85,11 @@ func (emu *Emulator) short_jump() {
     emu.eip = emu.eip + uint32(diff) + 2
 }
 
+func (emu *Emulator) near_jump() {
+    diff := emu.get_sign_code32(1)
+    emu.eip = emu.eip + uint32(diff) + 5
+}
+
 func (emu *Emulator) get_code8(index int) uint8 {
     return emu.memory[int(emu.eip) + index]
 }
@@ -97,16 +102,23 @@ func (emu *Emulator) get_code32(index int) uint32 {
     var ret uint32 = 0
 
     for i := 0; i < 4; i++ {
-        ret |= uint32(emu.get_code8(index + i) << (i * 8))
+        code := emu.get_code8(index + i)
+        ret |= uint32(code) << (i * 8)
     }
 
     return ret
+}
+
+func (emu *Emulator) get_sign_code32(index int) int32 {
+    return int32(emu.get_code32(index))
 }
 
 func (emu *Emulator) call_instruction(code uint8) {
     switch {
     case 0xB8 <= code && code <= 0xB8 + REGISTERS_COUNT - 1:
         emu.mov_r32_imm32()
+    case code == 0xE9:
+        emu.near_jump()
     case code == 0xEB:
         emu.short_jump()
     }
